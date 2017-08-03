@@ -7,6 +7,7 @@ FILE_PATHS = [
     'data/source/ati/html/tipitaka/dn/dn.*.html',
     'data/source/ati/html/tipitaka/an/**/an*.html',
     'data/source/ati/html/tipitaka/sn/**/sn*.html',
+    'data/source/ati/html/tipitaka/kn/dhp/dhp*.html',
     #'data/source/html/tipitaka/mn/mn.007.nypo.html',
 ]
 

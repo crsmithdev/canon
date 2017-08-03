@@ -24,6 +24,7 @@ import glob
 import math
 import os
 import random
+import pickle
 import zipfile
 
 import numpy as np
@@ -63,7 +64,6 @@ def read_data():
             text = re.sub(r'[.,?!—\-\":;\*\(\)“”]', ' ', text)
             text = re.sub(r"&", "and", text)
             text = re.sub(r"\[[^\]]*\]", "", text)
-            text = re.sub(r"\s+", " ", text)
             text = re.sub(r'\'s', ' s', text)
             text = re.sub(r'doesn\'t', 'does not', text)
             text = re.sub(r'don\'t', 'do not', text)
@@ -86,24 +86,24 @@ def read_data():
             text = re.sub(r'you\'re', 'you are', text)
             text = re.sub(r'they\'re', 'they are', text)
             text = re.sub(r'i\'ve', 'i have', text)
-            text = re.sub(r'0', 'zero', text)
-            text = re.sub(r'1', 'one', text)
-            text = re.sub(r'2', 'two', text)
-            text = re.sub(r'3', 'three', text)
-            text = re.sub(r'4', 'four', text)
-            text = re.sub(r'5', 'five', text)
-            text = re.sub(r'6', 'six', text)
-            text = re.sub(r'7', 'seven', text)
-            text = re.sub(r'8', 'eight', text)
-            text = re.sub(r'9', 'nine', text)
-            text = re.sub(r' ii ', 'two', text)
-            text = re.sub(r' iii ', 'three', text)
-            text = re.sub(r' iv ', 'four', text)
-            text = re.sub(r' v ', 'five', text)
-            text = re.sub(r' vi ', 'six', text)
-            text = re.sub(r' vii ', 'seven', text)
-            text = re.sub(r' viii ', 'eight', text)
-            text = re.sub(r' ix ', 'nine', text)
+            text = re.sub(r'0', ' zero ', text)
+            text = re.sub(r'1', ' one ', text)
+            text = re.sub(r'2', ' two ', text)
+            text = re.sub(r'3', ' three ', text)
+            text = re.sub(r'4', ' four ', text)
+            text = re.sub(r'5', ' five ', text)
+            text = re.sub(r'6', ' six ', text)
+            text = re.sub(r'7', ' seven ', text)
+            text = re.sub(r'8', ' eight ', text)
+            text = re.sub(r'9', ' nine ', text)
+            text = re.sub(r' ii ', 'two ', text)
+            text = re.sub(r' iii ', 'three ', text)
+            text = re.sub(r' iv ', 'four ', text)
+            text = re.sub(r' v ', 'five ', text)
+            text = re.sub(r' vi ', 'six ', text)
+            text = re.sub(r' vii ', 'seven ', text)
+            text = re.sub(r' viii ', 'eight ', text)
+            text = re.sub(r' ix ', 'nine ', text)
             text = re.sub(r'ā', 'a', text)
             text = re.sub(r'ṇ', 'n', text)
             text = re.sub(r'ḍ', 'd', text)
@@ -112,6 +112,7 @@ def read_data():
             text = re.sub(r'ū', 'u', text)
             text = re.sub(r'ī', 'i', text)
             text = re.sub(r'ṭ', 't', text)
+            text = re.sub(r"\s+", " ", text)
             for c in text:
                 if ord(c) > 128:
                     print(c)
@@ -144,12 +145,7 @@ def read_data():
 
     return data
 
-vocabulary = read_data()
-print('# total words: {}'.format(len(vocabulary)))
-print('# unique words: {}'.format(len(set(vocabulary))))
 
-# Step 2: Build the dictionary and replace rare words with UNK token.
-vocabulary_size = 3000
 
 
 def build_dataset(words, n_words):
@@ -172,22 +168,22 @@ def build_dataset(words, n_words):
     reversed_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
     return data, count, dictionary, reversed_dictionary
 
-data, count, dictionary, reverse_dictionary = build_dataset(vocabulary,
-                                                            vocabulary_size)
-del vocabulary  # Hint to reduce memory.
+def plot_with_labels(low_dim_embs, labels, filename='tsne.png'):
+    assert low_dim_embs.shape[0] >= len(labels), 'More labels than embeddings'
+    plt.figure(figsize=(48, 48))  # in inches
+    for i, label in enumerate(labels):
+        x, y = low_dim_embs[i, :]
+        plt.scatter(x, y)
+        plt.annotate(label,
+                     xy=(x, y),
+                     xytext=(5, 2),
+                     textcoords='offset points',
+                     ha='right',
+                     va='bottom')
 
-with open('data/temp/counts.txt', 'w') as outfile:
-    lines = ['{} -> {}'.format(w, c) for w, c in count]
-    text = '\n'.join(lines)
-    outfile.write(text)
+    plt.savefig(filename)
 
-#print(len([c for c in count if c[1] > 5]))
-#print('Most common words (+UNK)', count[:5])
-#print('Sample data', data[:10], [reverse_dictionary[i] for i in data[:10]])
-
-#print(count[:vocabulary_size])
 data_index = 0
-
 
 # Step 3: Function to generate a training batch for the skip-gram model.
 def generate_batch(batch_size, num_skips, skip_window):
@@ -216,12 +212,40 @@ def generate_batch(batch_size, num_skips, skip_window):
     data_index = (data_index + len(data) - span) % len(data)
     return batch, labels
 
-batch, labels = generate_batch(batch_size=8, num_skips=2, skip_window=1)
-for i in range(8):
-    print(batch[i], reverse_dictionary[batch[i]],
-          '->', labels[i, 0], reverse_dictionary[labels[i, 0]])
+#batch, labels = generate_batch(batch_size=8, num_skips=2, skip_window=1)
+#for i in range(8):
+#    print(batch[i], reverse_dictionary[batch[i]],
+#          '->', labels[i, 0], reverse_dictionary[labels[i, 0]])
 
 # Step 4: Build and train a skip-gram model.
+
+saved = os.path.isfile('data/temp/model.ckpt.index')
+print(saved)
+
+vocabulary_size = 2000
+
+if saved:
+    with open('data/temp/dictionary.pickle', 'rb') as infile:
+        reverse_dictionary = pickle.load(infile)
+if not saved:
+    vocabulary = read_data()
+    print('# total words: {}'.format(len(vocabulary)))
+    print('# unique words: {}'.format(len(set(vocabulary))))
+
+    # Step 2: Build the dictionary and replace rare words with UNK token.
+
+    data, count, dictionary, reverse_dictionary = build_dataset(vocabulary,
+                                                                vocabulary_size)
+    del vocabulary  # Hint to reduce memory.
+
+    with open('data/temp/counts.txt', 'w') as outfile:
+        lines = ['{} -> {}'.format(w, c) for w, c in count]
+        text = '\n'.join(lines)
+        outfile.write(text)
+
+    with open('data/temp/dictionary.pickle', 'wb') as outfile:
+        print(reverse_dictionary)
+        pickle.dump(reverse_dictionary, outfile)
 
 batch_size = 128
 embedding_size = 128  # Dimension of the embedding vector.
@@ -286,7 +310,7 @@ with graph.as_default():
     saver = tf.train.Saver()
 
 # Step 5: Begin training.
-num_steps = 50001
+num_steps = 2000001
 
 with tf.Session(graph=graph) as session:
     # We must initialize all variables before we use them.
@@ -294,72 +318,112 @@ with tf.Session(graph=graph) as session:
     print('Initialized')
 
     average_loss = 0
-    for step in range(num_steps):
-        batch_inputs, batch_labels = generate_batch(
-            batch_size, num_skips, skip_window)
-        feed_dict = {train_inputs: batch_inputs, train_labels: batch_labels}
 
-        # We perform one update step by evaluating the optimizer op (including it
-        # in the list of returned values for session.run()
-        _, loss_val = session.run([optimizer, loss], feed_dict=feed_dict)
-        average_loss += loss_val
+    if saved:
+        saver.restore(session, 'data/temp/model.ckpt')
+    else:
+        for step in range(num_steps):
+            batch_inputs, batch_labels = generate_batch(
+                batch_size, num_skips, skip_window)
+            feed_dict = {train_inputs: batch_inputs, train_labels: batch_labels}
 
-        if step % 2000 == 0:
-            if step > 0:
-                average_loss /= 2000
-            # The average loss is an estimate of the loss over the last 2000 batches.
-            print('Average loss at step ', step, ': ', average_loss)
-            average_loss = 0
+            # We perform one update step by evaluating the optimizer op (including it
+            # in the list of returned values for session.run()
+            _, loss_val = session.run([optimizer, loss], feed_dict=feed_dict)
+            average_loss += loss_val
 
-        # Note that this is expensive (~20% slowdown if computed every 500 steps)
-        if step % 10000 == 0:
-            sim = similarity.eval()
-            for i in range(valid_size):
-                valid_word = reverse_dictionary[valid_examples[i]]
-                top_k = 8  # number of nearest neighbors
-                nearest = (-sim[i, :]).argsort()[1:top_k + 1]
-                log_str = 'Nearest to %s:' % valid_word
-                for k in range(top_k):
-                    if nearest[k] not in reverse_dictionary:
-                        print(nearest[k], k)
-                    close_word = reverse_dictionary[nearest[k]]
-                    log_str = '%s %s,' % (log_str, close_word)
-                print(log_str)
+            if step % 2000 == 0:
+                if step > 0:
+                    average_loss /= 2000
+                # The average loss is an estimate of the loss over the last 2000 batches.
+                print('Average loss at step ', step, ': ', average_loss)
+                average_loss = 0
+
+            # Note that this is expensive (~20% slowdown if computed every 500 steps)
+            if step % 10000 == 0:
+                sim = similarity.eval()
+                for i in range(valid_size):
+                    valid_word = reverse_dictionary[valid_examples[i]]
+                    top_k = 8  # number of nearest neighbors
+                    nearest = (-sim[i, :]).argsort()[1:top_k + 1]
+                    log_str = 'Nearest to %s:' % valid_word
+                    for k in range(top_k):
+                        if nearest[k] not in reverse_dictionary:
+                            print(nearest[k], k)
+                        close_word = reverse_dictionary[nearest[k]]
+                        log_str = '%s %s,' % (log_str, close_word)
+                    print(log_str)
+
+        save_path = saver.save(session, "data/temp/model.ckpt")
+        print("Model saved in file: %s" % save_path)
+
     final_embeddings = normalized_embeddings.eval()
+    sim = similarity.eval()
 
-    save_path = saver.save(session, "data/temp/model.ckpt")
-    print("Model saved in file: %s" % save_path)
 
 # Step 6: Visualize the embeddings.
 
+def filter_inclusive(embeddings, labels, ids):
 
-def plot_with_labels(low_dim_embs, labels, filename='tsne.png'):
-    assert low_dim_embs.shape[0] >= len(labels), 'More labels than embeddings'
-    plt.figure(figsize=(36, 36))  # in inches
-    for i, label in enumerate(labels):
-        x, y = low_dim_embs[i, :]
-        plt.scatter(x, y)
-        plt.annotate(label,
-                     xy=(x, y),
-                     xytext=(5, 2),
-                     textcoords='offset points',
-                     ha='right',
-                     va='bottom')
+    embeddings = np.array([e for i, e in enumerate(embeddings) if i in ids])
+    labels = np.array([l for i, l in enumerate(labels) if i in ids])
 
-    plt.savefig(filename)
+    return embeddings, labels
+
+def filter_exclusive(embeddings, labels, ids):
+
+    embeddings = np.array([e for i, e in enumerate(embeddings) if not i in ids])
+    labels = np.array([l for i, l in enumerate(labels) if i not in ids])
+
+    return embeddings, labels
+
+def closest(id, similarity, n):
+     nearest = (-similarity[i, :]).argsort()[0:n + 1]
+     return nearest
+
+
+
+
 
 try:
     # pylint: disable=g-import-not-at-top
-    from sklearn.manifold import TSNE, Isomap
+    from sklearn.manifold import TSNE, Isomap, MDS, LocallyLinearEmbedding
     import matplotlib.pyplot as plt
 
     isomap = Isomap(10, n_components=2)
-    tsne = TSNE(perplexity=50, n_components=2, init='pca', n_iter=5000, early_exaggeration=8.0, verbose=1)
-    plot_only = 1500
-    low_dim_embs = tsne.fit_transform(final_embeddings[:plot_only, :])
-    #low_dim_embs2 = isomap.fit_transform(final_embeddings[:plot_only, :])
+    #tsne = TSNE(perplexity=50, n_components=2, init='pca', n_iter=2000, early_exaggeration=8.0, angle=0.15, verbose=1)
+    tsne = TSNE(n_components=2, init='pca', n_iter=2000, verbose=1)
+    lle = LocallyLinearEmbedding(method='modified')
+    mds = MDS(n_components=2)
+
+    plot_only = 1000
     labels = [reverse_dictionary[i] for i in range(plot_only)]
-    plot_with_labels(low_dim_embs, labels)
+    dictionary = dict(zip(reverse_dictionary.values(), reverse_dictionary.keys()))
+
+
+    stopword_ids = [dictionary.get(k) for k in stopwords]
+    stopword_ids = [i for i in stopword_ids if i is not None]
+
+    #labels = ['two', 'consciousness', 'form', 'perception', 'cessation', 'dhamma']
+
+    for i in range(500):
+        if i not in stopword_ids:
+            label = reverse_dictionary[i]
+            ids = closest(i, sim, 10)
+
+            print('{} -> {}'.format(label, ', '.join([reverse_dictionary[i] for i in ids[1:]])))
+
+    e, l = filter_exclusive(final_embeddings, labels, stopword_ids)
+
+    low_dim_embs = tsne.fit_transform(e[:plot_only, :])
+    plot_with_labels(low_dim_embs, l)
+
+    #low_dim_embs = isomap.fit_transform(final_embeddings[:plot_only, :])
+    #plot_with_labels(low_dim_embs, labels, 'iso.png')
+
+    #low_dim_embs = mds.fit_transform(final_embeddings[:plot_only, :])
+    #plot_with_labels(low_dim_embs, labels, 'mds.png')
+
 
 except ImportError:
     print('Please install sklearn, matplotlib, and scipy to show embeddings.')
