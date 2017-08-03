@@ -38,6 +38,7 @@ import nltk
 with open('data/source/stopwords/stopwords.txt', 'r') as infile:
     stopwords = infile.read().strip().split('\n')
 
+
 def convert_tag(tag):
     if tag.startswith('J'):
         return wordnet.ADJ
@@ -49,6 +50,7 @@ def convert_tag(tag):
         return wordnet.ADV
     else:
         return wordnet.NOUN
+
 
 def read_data():
 
@@ -117,7 +119,6 @@ def read_data():
                 if ord(c) > 128:
                     print(c)
 
-
             text = text.lower()
 
             words = text.split(' ')
@@ -132,6 +133,7 @@ def read_data():
             words = [wn.lemmatize(t[0], pos=t[1]) for t in tagged]
             #words = [re.sub(r"\'s$", "", w) for w in words]
             #words = [w for w in words if len(w) > 1]
+            words = [w for w in words if w not in stopwords]
 
             #data.extend(deplural)
             data.extend(words)
@@ -144,8 +146,6 @@ def read_data():
                 print('{} -> {}'.format(infile_path, outpath))
 
     return data
-
-
 
 
 def build_dataset(words, n_words):
@@ -168,22 +168,26 @@ def build_dataset(words, n_words):
     reversed_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
     return data, count, dictionary, reversed_dictionary
 
+
 def plot_with_labels(low_dim_embs, labels, filename='tsne.png'):
     assert low_dim_embs.shape[0] >= len(labels), 'More labels than embeddings'
     plt.figure(figsize=(48, 48))  # in inches
     for i, label in enumerate(labels):
         x, y = low_dim_embs[i, :]
         plt.scatter(x, y)
-        plt.annotate(label,
-                     xy=(x, y),
-                     xytext=(5, 2),
-                     textcoords='offset points',
-                     ha='right',
-                     va='bottom')
+        plt.annotate(
+            label,
+            xy=(x, y),
+            xytext=(5, 2),
+            textcoords='offset points',
+            ha='right',
+            va='bottom')
 
     plt.savefig(filename)
 
+
 data_index = 0
+
 
 # Step 3: Function to generate a training batch for the skip-gram model.
 def generate_batch(batch_size, num_skips, skip_window):
@@ -212,6 +216,7 @@ def generate_batch(batch_size, num_skips, skip_window):
     data_index = (data_index + len(data) - span) % len(data)
     return batch, labels
 
+
 #batch, labels = generate_batch(batch_size=8, num_skips=2, skip_window=1)
 #for i in range(8):
 #    print(batch[i], reverse_dictionary[batch[i]],
@@ -222,7 +227,7 @@ def generate_batch(batch_size, num_skips, skip_window):
 saved = os.path.isfile('data/temp/model.ckpt.index')
 print(saved)
 
-vocabulary_size = 2000
+vocabulary_size = 4000
 
 if saved:
     with open('data/temp/dictionary.pickle', 'rb') as infile:
@@ -234,8 +239,8 @@ if not saved:
 
     # Step 2: Build the dictionary and replace rare words with UNK token.
 
-    data, count, dictionary, reverse_dictionary = build_dataset(vocabulary,
-                                                                vocabulary_size)
+    data, count, dictionary, reverse_dictionary = build_dataset(
+        vocabulary, vocabulary_size)
     del vocabulary  # Hint to reduce memory.
 
     with open('data/temp/counts.txt', 'w') as outfile:
@@ -247,19 +252,19 @@ if not saved:
         print(reverse_dictionary)
         pickle.dump(reverse_dictionary, outfile)
 
-batch_size = 128
+batch_size = 256
 embedding_size = 128  # Dimension of the embedding vector.
-skip_window = 1       # How many words to consider left and right.
-num_skips = 2         # How many times to reuse an input to generate a label.
+skip_window = 4  # How many words to consider left and right.
+num_skips = 4  # How many times to reuse an input to generate a label.
 
 # We pick a random validation set to sample nearest neighbors. Here we limit the
 # validation samples to the words that have a low numeric ID, which by
 # construction are also the most frequent.
-valid_size = 100     # Random set of words to evaluate similarity on.
+valid_size = 100  # Random set of words to evaluate similarity on.
 valid_window = 100  # Only pick dev samples in the head of the distribution.
 valid_examples = np.random.choice(valid_window, valid_size, replace=False)
 valid_examples = [i for i in range(vocabulary_size)]
-num_sampled = 64    # Number of negative examples to sample.
+num_sampled = 12  # Number of negative examples to sample.
 
 graph = tf.Graph()
 
@@ -279,20 +284,22 @@ with graph.as_default():
 
         # Construct the variables for the NCE loss
         nce_weights = tf.Variable(
-            tf.truncated_normal([vocabulary_size, embedding_size],
-                                stddev=1.0 / math.sqrt(embedding_size)))
+            tf.truncated_normal(
+                [vocabulary_size, embedding_size],
+                stddev=1.0 / math.sqrt(embedding_size)))
         nce_biases = tf.Variable(tf.zeros([vocabulary_size]))
 
     # Compute the average NCE loss for the batch.
     # tf.nce_loss automatically draws a new sample of the negative labels each
     # time we evaluate the loss.
     loss = tf.reduce_mean(
-        tf.nn.nce_loss(weights=nce_weights,
-                       biases=nce_biases,
-                       labels=train_labels,
-                       inputs=embed,
-                       num_sampled=num_sampled,
-                       num_classes=vocabulary_size))
+        tf.nn.nce_loss(
+            weights=nce_weights,
+            biases=nce_biases,
+            labels=train_labels,
+            inputs=embed,
+            num_sampled=num_sampled,
+            num_classes=vocabulary_size))
 
     # Construct the SGD optimizer using a learning rate of 1.0.
     optimizer = tf.train.GradientDescentOptimizer(1.0).minimize(loss)
@@ -300,8 +307,8 @@ with graph.as_default():
     # Compute the cosine similarity between minibatch examples and all embeddings.
     norm = tf.sqrt(tf.reduce_sum(tf.square(embeddings), 1, keep_dims=True))
     normalized_embeddings = embeddings / norm
-    valid_embeddings = tf.nn.embedding_lookup(
-        normalized_embeddings, valid_dataset)
+    valid_embeddings = tf.nn.embedding_lookup(normalized_embeddings,
+                                              valid_dataset)
     similarity = tf.matmul(
         valid_embeddings, normalized_embeddings, transpose_b=True)
 
@@ -310,7 +317,7 @@ with graph.as_default():
     saver = tf.train.Saver()
 
 # Step 5: Begin training.
-num_steps = 2000001
+num_steps = 200001
 
 with tf.Session(graph=graph) as session:
     # We must initialize all variables before we use them.
@@ -323,8 +330,8 @@ with tf.Session(graph=graph) as session:
         saver.restore(session, 'data/temp/model.ckpt')
     else:
         for step in range(num_steps):
-            batch_inputs, batch_labels = generate_batch(
-                batch_size, num_skips, skip_window)
+            batch_inputs, batch_labels = generate_batch(batch_size, num_skips,
+                                                        skip_window)
             feed_dict = {train_inputs: batch_inputs, train_labels: batch_labels}
 
             # We perform one update step by evaluating the optimizer op (including it
@@ -360,8 +367,8 @@ with tf.Session(graph=graph) as session:
     final_embeddings = normalized_embeddings.eval()
     sim = similarity.eval()
 
-
 # Step 6: Visualize the embeddings.
+
 
 def filter_inclusive(embeddings, labels, ids):
 
@@ -370,6 +377,7 @@ def filter_inclusive(embeddings, labels, ids):
 
     return embeddings, labels
 
+
 def filter_exclusive(embeddings, labels, ids):
 
     embeddings = np.array([e for i, e in enumerate(embeddings) if not i in ids])
@@ -377,12 +385,10 @@ def filter_exclusive(embeddings, labels, ids):
 
     return embeddings, labels
 
+
 def closest(id, similarity, n):
-     nearest = (-similarity[i, :]).argsort()[0:n + 1]
-     return nearest
-
-
-
+    nearest = (-similarity[i, :]).argsort()[0:n + 1]
+    return nearest
 
 
 try:
@@ -398,8 +404,8 @@ try:
 
     plot_only = 1000
     labels = [reverse_dictionary[i] for i in range(plot_only)]
-    dictionary = dict(zip(reverse_dictionary.values(), reverse_dictionary.keys()))
-
+    dictionary = dict(
+        zip(reverse_dictionary.values(), reverse_dictionary.keys()))
 
     stopword_ids = [dictionary.get(k) for k in stopwords]
     stopword_ids = [i for i in stopword_ids if i is not None]
@@ -411,7 +417,8 @@ try:
             label = reverse_dictionary[i]
             ids = closest(i, sim, 10)
 
-            print('{} -> {}'.format(label, ', '.join([reverse_dictionary[i] for i in ids[1:]])))
+            print('{} -> {}'.format(label, ', '.join(
+                [reverse_dictionary[i] for i in ids[1:]])))
 
     e, l = filter_exclusive(final_embeddings, labels, stopword_ids)
 
@@ -423,7 +430,6 @@ try:
 
     #low_dim_embs = mds.fit_transform(final_embeddings[:plot_only, :])
     #plot_with_labels(low_dim_embs, labels, 'mds.png')
-
 
 except ImportError:
     print('Please install sklearn, matplotlib, and scipy to show embeddings.')
