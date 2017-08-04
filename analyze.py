@@ -1,19 +1,3 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-"""Basic word2vec example."""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -28,165 +12,190 @@ import pickle
 import zipfile
 
 import numpy as np
-from six.moves import urllib
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
-from nltk.stem.porter import PorterStemmer
-from nltk.corpus import wordnet
-import nltk
 
-with open('data/source/stopwords/stopwords.txt', 'r') as infile:
-    stopwords = infile.read().strip().split('\n')
+INPUT_PATH = 'data/processed/*.txt'
 
+TEMP_PATH = 'data/temp'
 
-def convert_tag(tag):
-    if tag.startswith('J'):
-        return wordnet.ADJ
-    elif tag.startswith('V'):
-        return wordnet.VERB
-    elif tag.startswith('N'):
-        return wordnet.NOUN
-    elif tag.startswith('R'):
-        return wordnet.ADV
-    else:
-        return wordnet.NOUN
+STOPWORDS_PATH = 'data/source/stopwords/stopwords.txt'
+
+with open(STOPWORDS_PATH, 'r') as file:
+    stopwords = file.read().strip().split('\n')
+
+class NGramScanner(object):
+
+    def __init__(self, sentences, window, reverse_dictionary):
+        self.sentences = sentences
+        self.window = window
+        self.ngrams = []
+        self.index = 0
+
+        self.reverse_dictionary = reverse_dictionary
+
+    def _extract(self, sentence):
+
+        ngrams = []
+        #print([reverse_dictionary.get(i, i) for i in sentence])
+
+        for i, word in enumerate(sentence):
+            start = max(i - self.window, 0)
+            end = min(i + self.window, len(sentence) - 1)
+
+            for j in range(start, end + 1):
+                if j != i:
+                    ngrams.append((sentence[i], sentence[j]))
+
+        return ngrams
+
+    def batch(self, size):
+
+        batch = []
+        labels = []
+
+        while len(batch) < size:
+
+            while not self.ngrams:
+                self.ngrams = self._extract(self.sentences[self.index])
+                self.index = (self.index + 1) % len(self.sentences)
+
+            ngram = self.ngrams.pop(0)
+            batch.append(ngram[0])
+            labels.append(ngram[1])
+
+        batch = np.array(batch)
+        labels = np.array([[l] for l in labels])
+
+        #for i in range(len(batch)):
+        #    print(batch[i], reverse_dictionary[batch[i]],
+        #        '->', labels[i, 0], reverse_dictionary[labels[i, 0]])
+
+        return batch, labels
 
 
 def read_data():
 
-    data = []
-    path = 'data/processed/*.txt'
-    wn = nltk.stem.WordNetLemmatizer()
+    with open(STOPWORDS_PATH, 'r') as file:
+        stopwords = file.read().strip().split('\n')
 
-    for infile_path in glob.iglob(path):
-        with open(infile_path, 'r') as infile:
+    words = []
+    sentences = []
 
-            text = re.sub(r'\n', ' ', infile.read())
-            text = text.lower()
-            text = re.sub(r'[.,?!—\-\":;\*\(\)“”]', ' ', text)
-            text = re.sub(r"&", "and", text)
-            text = re.sub(r"\[[^\]]*\]", "", text)
-            text = re.sub(r'\'s', ' s', text)
-            text = re.sub(r'doesn\'t', 'does not', text)
-            text = re.sub(r'don\'t', 'do not', text)
-            text = re.sub(r'didn\'t', 'did not', text)
-            text = re.sub(r'isn\'t', 'is not', text)
-            text = re.sub(r'wouldn\'t', 'would not', text)
-            text = re.sub(r'haven\'t', 'have not', text)
-            text = re.sub(r'can\'t', 'can not', text)
-            text = re.sub(r'won\'t', 'will not', text)
-            text = re.sub(r'hasn\'t', 'has not', text)
-            text = re.sub(r'shouldn\'t', 'should not', text)
-            text = re.sub(r'couldn\'t', 'could not', text)
-            text = re.sub(r'wasn\'t', 'was not', text)
-            text = re.sub(r'weren\'t', 'were not', text)
-            text = re.sub(r'aren\'t', 'are not', text)
-            text = re.sub(r'i\'ll', 'i will', text)
-            text = re.sub(r'we\'ll', 'we will', text)
-            text = re.sub(r'i\'m', 'i am', text)
-            text = re.sub(r'we\'re', 'we are', text)
-            text = re.sub(r'you\'re', 'you are', text)
-            text = re.sub(r'they\'re', 'they are', text)
-            text = re.sub(r'i\'ve', 'i have', text)
-            text = re.sub(r'0', ' zero ', text)
-            text = re.sub(r'1', ' one ', text)
-            text = re.sub(r'2', ' two ', text)
-            text = re.sub(r'3', ' three ', text)
-            text = re.sub(r'4', ' four ', text)
-            text = re.sub(r'5', ' five ', text)
-            text = re.sub(r'6', ' six ', text)
-            text = re.sub(r'7', ' seven ', text)
-            text = re.sub(r'8', ' eight ', text)
-            text = re.sub(r'9', ' nine ', text)
-            text = re.sub(r' ii ', 'two ', text)
-            text = re.sub(r' iii ', 'three ', text)
-            text = re.sub(r' iv ', 'four ', text)
-            text = re.sub(r' v ', 'five ', text)
-            text = re.sub(r' vi ', 'six ', text)
-            text = re.sub(r' vii ', 'seven ', text)
-            text = re.sub(r' viii ', 'eight ', text)
-            text = re.sub(r' ix ', 'nine ', text)
-            text = re.sub(r'ā', 'a', text)
-            text = re.sub(r'ṇ', 'n', text)
-            text = re.sub(r'ḍ', 'd', text)
-            text = re.sub(r'ñ', 'n', text)
-            text = re.sub(r'ṅ', 'n', text)
-            text = re.sub(r'ū', 'u', text)
-            text = re.sub(r'ī', 'i', text)
-            text = re.sub(r'ṭ', 't', text)
-            text = re.sub(r"\s+", " ", text)
-            for c in text:
-                if ord(c) > 128:
-                    print(c)
+    for path in glob.iglob(INPUT_PATH):
+        with open(path, 'r') as file:
 
-            text = text.lower()
+            text = file.read()
+            lines = text.split('\n')
 
-            words = text.split(' ')
-            if "don't" in words:
-                print("*****")
-            words = [w.strip('\'') for w in words]
-            words = [w for w in words if len(w) > 0]
-            words = [w for w in words if len(w) > 1 or w in {'a', 'i'}]
+            for line in lines:
+                sentence_words = []
+                line_words = line.split(' ')
+                for w in line_words:
+                    w = re.sub(r'("|\')', '', w)
+                    words.extend(w.split('-'))
+                    sentence_words.append(w)
 
-            tagged = nltk.pos_tag(words)
-            tagged = [(t[0], convert_tag(t[1])) for t in tagged]
-            words = [wn.lemmatize(t[0], pos=t[1]) for t in tagged]
-            #words = [re.sub(r"\'s$", "", w) for w in words]
-            #words = [w for w in words if len(w) > 1]
-            words = [w for w in words if w not in stopwords]
+                sentence_words = [w for w in sentence_words if re.match(r'[a-z]+', w)]
+                sentence_words = [w for w in sentence_words if len(w) > 1 or w in {'a', 'i'}]
+                #print(sentence_words)
 
-            #data.extend(deplural)
-            data.extend(words)
-            if "don't" in words:
-                print("!!!!")
-
-            outpath = 'data/temp/' + os.path.basename(infile_path)
-            with open(outpath, 'w+') as outfile:
-                outfile.write(' '.join(words))
-                print('{} -> {}'.format(infile_path, outpath))
-
-    return data
+                if len(sentence_words) > 0:
+                    sentences.append(sentence_words)
 
 
-def build_dataset(words, n_words):
-    """Process raw inputs into a dataset."""
-    count = [['UNK', -1]]
-    count.extend(collections.Counter(words).most_common(n_words - 1))
-    dictionary = dict()
-    for word, _ in count:
-        dictionary[word] = len(dictionary)
-    data = list()
-    unk_count = 0
-    for word in words:
-        if word in dictionary:
-            index = dictionary[word]
-        else:
-            index = 0  # dictionary['UNK']
-            unk_count += 1
-        data.append(index)
-    count[0][1] = unk_count
-    reversed_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
-    return data, count, dictionary, reversed_dictionary
+    words = [w for w in words if re.match(r'[a-z]+', w)]
+    words = [w for w in words if len(w) > 1 or w in {'a', 'i'}]
+    #words = [w for w in words if w not in stopwords]
+    #for s in sentences[0:20]:
+    #    print(s)
+
+    return words, sentences
 
 
-def plot_with_labels(low_dim_embs, labels, filename='tsne.png'):
-    assert low_dim_embs.shape[0] >= len(labels), 'More labels than embeddings'
-    plt.figure(figsize=(48, 48))  # in inches
+def plot_points(points, labels, filename=None):
+
+    plt.figure(figsize=(64, 64))  # in inches
+
     for i, label in enumerate(labels):
         x, y = low_dim_embs[i, :]
         plt.scatter(x, y)
-        plt.annotate(
-            label,
-            xy=(x, y),
-            xytext=(5, 2),
-            textcoords='offset points',
-            ha='right',
-            va='bottom')
+        plt.annotate(label, xy=(x, y), xytext=(5, 2), textcoords='offset points', ha='right', va='bottom')
 
-    plt.savefig(filename)
+    if filename:
+        plt.savefig(filename)
 
 
 data_index = 0
+data_index2 = 0
+
+def build_dataset2(words, n_words):
+
+    counter = collections.Counter(words)
+
+    counts = [['UNK', -1]]
+    counts.extend(counter.most_common(n_words - 1))
+
+    dictionary = {c[0]: i for i, c in enumerate(counts)}
+    data = []
+    unk_count = 0
+
+    for word in words:
+        index = dictionary.get(word, 0)
+
+        if index:
+            unk_count += 1
+
+        data.append(index)
+
+    counts[0][1] = unk_count
+
+    reversed_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
+    return data, counts, dictionary, reversed_dictionary
+
+def generate_batch2(batch_size, num_skips, skip_window):
+    global data_index2
+
+    batch = []
+    labels = []
+
+    while len(batch) < batch_size:
+        start = max(data_index2 - (2 * skip_window) - 1, 0)
+        end = min(data_index2 + (2 * skip_window) + 1, len(data) - 1)
+        span = data[start:end]
+        for i, target in enumerate(span):
+            #if target in stopword_ids:
+            if target == 0:
+                continue
+            target_start = max(i - skip_window, 0)
+            target_end = min(i + skip_window, len(span) - 1)
+            #print(reverse_dictionary[target])
+            for j in range(target_start, target_end + 1):
+                if j != i and span[j] != 0:
+                    #if j != i and span[j] not in stopword_ids:
+                    #print(' -> ' + reverse_dictionary[span[j]])
+                    batch.append(target)
+                    labels.append(span[j])
+                if len(batch) == batch_size:
+                    break
+
+            if len(batch) == batch_size:
+                break
+
+        data_index2 = (data_index2 + len(span)) % len(data)
+
+    #for i in range(len(batch)):
+    #    print(batch[i], reverse_dictionary[batch[i]],
+    #        '->', labels[i], reverse_dictionary[labels[i]])
+
+    #print(len(batch))
+    #print(data_index2)
+
+    batch = np.array(batch)
+    labels = np.array([[l] for l in labels])
+
+    return batch, labels
+
+    #print(i, reverse_dictionary[target], target_start, target_end)
 
 
 # Step 3: Function to generate a training batch for the skip-gram model.
@@ -201,6 +210,8 @@ def generate_batch(batch_size, num_skips, skip_window):
     for _ in range(span):
         buffer.append(data[data_index])
         data_index = (data_index + 1) % len(data)
+
+    #print([reverse_dictionary[i] for i in buffer])
     for i in range(batch_size // num_skips):
         target = skip_window  # target label at the center of the buffer
         targets_to_avoid = [skip_window]
@@ -212,49 +223,94 @@ def generate_batch(batch_size, num_skips, skip_window):
             labels[i * num_skips + j, 0] = buffer[target]
         buffer.append(data[data_index])
         data_index = (data_index + 1) % len(data)
+
+        #print([reverse_dictionary[i] for i in buffer])
+
     # Backtrack a little bit to avoid skipping words in the end of a batch
     data_index = (data_index + len(data) - span) % len(data)
+
+    #for i in range(len(batch)):
+    #    print(batch[i], reverse_dictionary[batch[i]],
+    #        '->', labels[i, 0], reverse_dictionary[labels[i, 0]])
+    #print(data_index)
+
+    #print(len(batch), len(labels))
+    nz_b = len([b for b in batch if b > 0])
+    nz_l = len([l for l in labels if l > 0])
+    #if nz_b != nz_l != batch_size:
+    #    print(nz_b, nz_l)
+
+    #print(len([b for b in batch if b > 0]), len([l for l in labels if l > 0]))
+    #print(labels[0])
+
     return batch, labels
 
 
-#batch, labels = generate_batch(batch_size=8, num_skips=2, skip_window=1)
-#for i in range(8):
-#    print(batch[i], reverse_dictionary[batch[i]],
-#          '->', labels[i, 0], reverse_dictionary[labels[i, 0]])
 
 # Step 4: Build and train a skip-gram model.
+#vocabulary = read_data()
+saved = os.path.isdir(TEMP_PATH)  #  .isfile('data/temp/model.ckpt.index')
+print('using saved: {}'.format(saved))
 
-saved = os.path.isfile('data/temp/model.ckpt.index')
-print(saved)
+vocabulary_size = 3000
 
-vocabulary_size = 4000
+#if saved:
+#    with open('data/temp/dictionary.pickle', 'rb') as infile:
+#        reverse_dictionary = pickle.load(infile)
+#if not saved:
+vocabulary, sentences = read_data()
+print('# total words: {}'.format(len(vocabulary)))
+print('# unique words: {}'.format(len(set(vocabulary))))
 
-if saved:
-    with open('data/temp/dictionary.pickle', 'rb') as infile:
-        reverse_dictionary = pickle.load(infile)
-if not saved:
-    vocabulary = read_data()
-    print('# total words: {}'.format(len(vocabulary)))
-    print('# unique words: {}'.format(len(set(vocabulary))))
+# Step 2: Build the dictionary and replace rare words with UNK token.
 
-    # Step 2: Build the dictionary and replace rare words with UNK token.
+data, count, dictionary, reverse_dictionary = build_dataset2(vocabulary, vocabulary_size)
+stopword_ids = [dictionary.get(k) for k in stopwords]
+stopword_ids = [i for i in stopword_ids if i is not None]
+stopword_ids.append(0)
+data = [d for d in data if d != 0 and d not in stopword_ids]
+#for i in range(len(sentences)):
+for i in range(len(sentences)):
+    source = sentences[i]
+    ids = [dictionary.get(w, 0) for w in source]
+    filtered = [i for i in ids if i != 0 and i not in stopword_ids]
+    print(sentences[i])
+    sentences[i] = filtered
+    print([reverse_dictionary[i] for i in filtered])
+print(count[len(count) - 1])
+print(len([c for c in count if c[1] > 10]))
+#for s in sentences[:20]:
+#    print(s)
+#for c in count:
+#    print('{} -> {}'.format(c[0], c[1]))
+del vocabulary  # Hint to reduce memory.
 
-    data, count, dictionary, reverse_dictionary = build_dataset(
-        vocabulary, vocabulary_size)
-    del vocabulary  # Hint to reduce memory.
+#with open('data/temp/counts.txt', 'w') as outfile:
+#    lines = ['{} -> {}'.format(w, c) for w, c in count]
+#    text = '\n'.join(lines)
+#    outfile.write(text)
 
-    with open('data/temp/counts.txt', 'w') as outfile:
-        lines = ['{} -> {}'.format(w, c) for w, c in count]
-        text = '\n'.join(lines)
-        outfile.write(text)
+scanner = NGramScanner(sentences, 8, reverse_dictionary)
+batch, labels = scanner.batch(300)
+#print(batch, labels)
 
-    with open('data/temp/dictionary.pickle', 'wb') as outfile:
-        print(reverse_dictionary)
-        pickle.dump(reverse_dictionary, outfile)
+#exit()
+if not os.path.exists('data/temp'):
+    os.makedirs('data/temp')
+
+with open('data/temp/dictionary.pickle', 'wb') as outfile:
+    pickle.dump(reverse_dictionary, outfile)
+
+
+#generate_batch(128, 4, 4)
+#generate_batch2(128, 4, 4)
+#generate_batch(128, 4, 4)
+#generate_batch2(128, 4, 4)
+#exit()
 
 batch_size = 256
 embedding_size = 128  # Dimension of the embedding vector.
-skip_window = 4  # How many words to consider left and right.
+skip_window = 5  # How many words to consider left and right.
 num_skips = 4  # How many times to reuse an input to generate a label.
 
 # We pick a random validation set to sample nearest neighbors. Here we limit the
@@ -278,15 +334,12 @@ with graph.as_default():
     # Ops and variables pinned to the CPU because of missing GPU implementation
     with tf.device('/cpu:0'):
         # Look up embeddings for inputs.
-        embeddings = tf.Variable(
-            tf.random_uniform([vocabulary_size, embedding_size], -1.0, 1.0))
+        embeddings = tf.Variable(tf.random_uniform([vocabulary_size, embedding_size], -1.0, 1.0))
         embed = tf.nn.embedding_lookup(embeddings, train_inputs)
 
         # Construct the variables for the NCE loss
         nce_weights = tf.Variable(
-            tf.truncated_normal(
-                [vocabulary_size, embedding_size],
-                stddev=1.0 / math.sqrt(embedding_size)))
+            tf.truncated_normal([vocabulary_size, embedding_size], stddev=1.0 / math.sqrt(embedding_size)))
         nce_biases = tf.Variable(tf.zeros([vocabulary_size]))
 
     # Compute the average NCE loss for the batch.
@@ -307,10 +360,8 @@ with graph.as_default():
     # Compute the cosine similarity between minibatch examples and all embeddings.
     norm = tf.sqrt(tf.reduce_sum(tf.square(embeddings), 1, keep_dims=True))
     normalized_embeddings = embeddings / norm
-    valid_embeddings = tf.nn.embedding_lookup(normalized_embeddings,
-                                              valid_dataset)
-    similarity = tf.matmul(
-        valid_embeddings, normalized_embeddings, transpose_b=True)
+    valid_embeddings = tf.nn.embedding_lookup(normalized_embeddings, valid_dataset)
+    similarity = tf.matmul(valid_embeddings, normalized_embeddings, transpose_b=True)
 
     # Add variable initializer.
     init = tf.global_variables_initializer()
@@ -318,6 +369,12 @@ with graph.as_default():
 
 # Step 5: Begin training.
 num_steps = 200001
+check_words = [
+    'monk', 'blessed', 'mind', 'body', 'dhamma', 'right', 'wrong', 'cessation', 'origination', 'feeling', 'form',
+    'perception', 'birth', 'death', 'pleasure', 'pain', 'noble', 'consciousness', 'brahman', 'good', 'bad', 'mental',
+    'bodily', 'four', 'six', 'eight', 'tathagata', 'king', 'master', 'north', 'first', 'skin', 'flesh', 'ananda', 'ear',
+    'eye', 'nose', 'tongue', 'two', 'three', 'gotama'
+]
 
 with tf.Session(graph=graph) as session:
     # We must initialize all variables before we use them.
@@ -330,8 +387,9 @@ with tf.Session(graph=graph) as session:
         saver.restore(session, 'data/temp/model.ckpt')
     else:
         for step in range(num_steps):
-            batch_inputs, batch_labels = generate_batch(batch_size, num_skips,
-                                                        skip_window)
+            #batch_inputs, batch_labels = generate_batch(batch_size, num_skips, skip_window)
+            #batch_inputs, batch_labels = generate_batch(batch_size, num_skips, skip_window)
+            batch_inputs, batch_labels = scanner.batch(batch_size)
             feed_dict = {train_inputs: batch_inputs, train_labels: batch_labels}
 
             # We perform one update step by evaluating the optimizer op (including it
@@ -349,8 +407,11 @@ with tf.Session(graph=graph) as session:
             # Note that this is expensive (~20% slowdown if computed every 500 steps)
             if step % 10000 == 0:
                 sim = similarity.eval()
-                for i in range(valid_size):
-                    valid_word = reverse_dictionary[valid_examples[i]]
+                for w in check_words:
+                    valid_word = w
+                    i = dictionary[w]
+                    #for i in range(valid_size):
+                    #    valid_word = reverse_dictionary[valid_examples[i]]
                     top_k = 8  # number of nearest neighbors
                     nearest = (-sim[i, :]).argsort()[1:top_k + 1]
                     log_str = 'Nearest to %s:' % valid_word
@@ -360,6 +421,7 @@ with tf.Session(graph=graph) as session:
                         close_word = reverse_dictionary[nearest[k]]
                         log_str = '%s %s,' % (log_str, close_word)
                     print(log_str)
+                    #print(data_index2)
 
         save_path = saver.save(session, "data/temp/model.ckpt")
         print("Model saved in file: %s" % save_path)
@@ -392,9 +454,12 @@ def closest(id, similarity, n):
 
 
 try:
+    with open(STOPWORDS_PATH, 'r') as file:
+        stopwords = file.read().strip().split('\n')
     # pylint: disable=g-import-not-at-top
     from sklearn.manifold import TSNE, Isomap, MDS, LocallyLinearEmbedding
     import matplotlib.pyplot as plt
+    from sklearn.cluster import KMeans
 
     isomap = Isomap(10, n_components=2)
     #tsne = TSNE(perplexity=50, n_components=2, init='pca', n_iter=2000, early_exaggeration=8.0, angle=0.15, verbose=1)
@@ -402,34 +467,50 @@ try:
     lle = LocallyLinearEmbedding(method='modified')
     mds = MDS(n_components=2)
 
-    plot_only = 1000
+    plot_only = 1500
     labels = [reverse_dictionary[i] for i in range(plot_only)]
-    dictionary = dict(
-        zip(reverse_dictionary.values(), reverse_dictionary.keys()))
+    dictionary = dict(zip(reverse_dictionary.values(), reverse_dictionary.keys()))
 
     stopword_ids = [dictionary.get(k) for k in stopwords]
     stopword_ids = [i for i in stopword_ids if i is not None]
 
     #labels = ['two', 'consciousness', 'form', 'perception', 'cessation', 'dhamma']
 
+    words = ['eye', 'ear', 'consciousness']
+    word_ids = [dictionary[w] for w in words]
     for i in range(500):
         if i not in stopword_ids:
             label = reverse_dictionary[i]
             ids = closest(i, sim, 10)
 
-            print('{} -> {}'.format(label, ', '.join(
-                [reverse_dictionary[i] for i in ids[1:]])))
+            print('{} -> {}'.format(label, ', '.join([reverse_dictionary[i] for i in ids[1:]])))
 
     e, l = filter_exclusive(final_embeddings, labels, stopword_ids)
+    clusters = 25
+    kmeans_clustering = KMeans(n_clusters=clusters)
 
     low_dim_embs = tsne.fit_transform(e[:plot_only, :])
-    plot_with_labels(low_dim_embs, l)
+    plot_points(low_dim_embs, l, filename='tsne.png')
+    print(low_dim_embs.shape)
+
+    #print(cluster_words)
+    idx = kmeans_clustering.fit_predict(e[:plot_only, :])
+    print(idx.shape)
+    cluster_words = [[] for i in range(clusters)]
+    for i in range(len(idx)):
+        cluster = idx[i]
+        print(cluster, i)
+        word = reverse_dictionary[i]
+        #word = i
+        cluster_words[cluster].append(word)
+
+    for i in range(clusters):
+        print('cluster {}'.format(i))
+        print(', '.join(cluster_words[i]))
 
     #low_dim_embs = isomap.fit_transform(final_embeddings[:plot_only, :])
-    #plot_with_labels(low_dim_embs, labels, 'iso.png')
 
     #low_dim_embs = mds.fit_transform(final_embeddings[:plot_only, :])
-    #plot_with_labels(low_dim_embs, labels, 'mds.png')
 
 except ImportError:
     print('Please install sklearn, matplotlib, and scipy to show embeddings.')
