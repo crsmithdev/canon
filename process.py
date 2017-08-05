@@ -113,10 +113,9 @@ def preprocess(text):
             string = re.sub(r'``', '"', string)
             string = re.sub(r'\'\'', '"', string)
 
-            string = re.sub(r' n\'t ', ' not ', string)  # n't -> not
+            string = re.sub(r' n\'t ', ' not ', string)     # n't -> not
             string = re.sub(r" '([^'])", r" ' \1", string)  # fix quote spacing
-            #string = re.sub(r"([^'])'", r"\1'", string)  # fix quote spacing
-            string = re.sub(r'\n', '', string)  # any remaining newlines
+            string = re.sub(r'\n', '', string)              # strip any remaining newlines
 
             out.append(string)
 
