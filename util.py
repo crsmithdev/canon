@@ -17,11 +17,13 @@ def read_data(inpath):
 
                 words = line.split(' ')
                 words = [w for w in words if re.match(r'^[a-z/-]+$', w)]  # only letters, - and /
-                words = [w for w in words if len(w) > 1 or w in {'a', 'i'}]  # only certain single-letter words
 
                 # split words with dashes into two words
                 split = [w.split('-') for w in words]
                 words = [w for s in split for w in s]
+
+                # skip any empty strings
+                words = [w for w in words if len(w) > 1 or w in {'a', 'i'}]  # only certain single-letter words
 
                 vocabulary.update(words)
 
@@ -36,31 +38,54 @@ def read_data(inpath):
 
     return sentences
 
-
-def encode_data(sentences, threshold=10, ignore=None):
+import math
+import numpy as np
+def encode_data(sentences, threshold=5, ignore=None):
 
     ignore = ignore if ignore else set()
     counter = collections.Counter()
+    total_words = 0
     sentences_out = []
 
     for sentence in sentences:
         counter.update(sentence)
+        total_words += len(sentence)
+
+    print('total:', total_words)
 
     counts = counter.most_common()
-    counts = [c for c in counts if c[1] >= threshold and c[0] not in ignore]
+    #counts = [c for c in counts if c[1] >= threshold and c[0] not in ignore]
+    counts = [c for c in counts if c[1] >= threshold]
     dictionary = {c[0]: i for i, c in enumerate(counts)}
     reverse_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
 
-    for k in dictionary.keys():
-        plural = dictionary.get(k + 's')
-        if plural:
-            print(k, reverse_dictionary[plural])
+    #for k in dictionary.keys():
+    #    plural = dictionary.get(k + 's')
+    #    if plural:
+    #        print(k, reverse_dictionary[plural])
 
     for sentence in sentences:
-        encoded = [dictionary[w] for w in sentence if w in dictionary]
+        encoded = []
+        for word in sentence:
+            if word not in dictionary:
+                continue
+            # p = counter[word] / total_words
+            # s = ((p - .001) / p) - math.sqrt(.001 / p)
+            # a = math.sqrt(counter[word] / (.001 * total_words)) + 1
+            # b = (.001 * total_words)
+            # r = a * b / counter[word]
+            # #print(word, s, r)
+            # if np.random.sample() < r:
+            #if np.random.sample() > s:
+                #print('include', word)
+            encoded.append(dictionary[word])
+            #else:
+                #print('exclude', word)
+
+        #encoded = [dictionary[w] for w in sentence if w in dictionary]
         sentences_out.append(encoded)
 
-    return sentences_out, dictionary, reverse_dictionary
+    return sentences_out, counter, total_words, dictionary, reverse_dictionary
 
 
 def plot_points(points, labels, filename=None):
