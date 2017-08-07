@@ -101,10 +101,16 @@ def preprocess(text):
             words = nltk.word_tokenize(sentence)
             words = [w.lower() for w in words]
 
+            # split hyphenated words
+            split = [w.split('-') for w in words]
+            words = [w for s in split for w in s]
+            words = [w for w in words if len(w) > 0]
+
             # pos tag + wordnet lemmatize
             tagged = nltk.pos_tag(words)
             tagged = [(t[0], convert_tag(t[1])) for t in tagged]
             words = [lemmatizer.lemmatize(t[0], pos=t[1]) for t in tagged]
+            words = [w for w in words if re.match(r'^[a-z/-]+$', w)]
 
             # reassemble sentence string
             string = ' '.join(words)
@@ -121,7 +127,7 @@ def preprocess(text):
 
         processed.append('\n'.join(out))
 
-    return '\n\n'.join(processed)
+    return '\n'.join(processed)
 
 
 def parse_text(soup):

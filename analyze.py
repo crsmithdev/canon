@@ -14,9 +14,10 @@ STOPWORDS_PATH = 'data/source/stopwords/stopwords.txt'
 CHECK_WORDS = [
     'mind', 'body', 'dhamma', 'buddha', 'sangha', 'tathagata', 'gotama', 'right', 'wrong', 'view', 'resolve', 'speech',
     'action', 'livelihood', 'effort', 'mindfulness', 'practice', 'cessation', 'origination', 'birth', 'death',
-    'pleasure', 'pain', 'good', 'bad', 'mind', 'body', 'north', 'south', 'skin', 'flesh', 'eye', 'ear', 'king',
-    'sword', 'contact', 'form', 'sensation', 'feeling', 'perception', 'feeling', 'formation', 'consciousness'
+    'pleasure', 'pain', 'good', 'bad', 'mind', 'body', 'north', 'south', 'skin', 'flesh', 'eye', 'ear', 'king', 'sword',
+    'contact', 'form', 'sensation', 'feeling', 'perception', 'feeling', 'formation', 'consciousness'
 ]
+
 
 class NGramScanner(object):
 
@@ -34,33 +35,82 @@ class NGramScanner(object):
 
         ngrams = []
         cleaned = []
-        for word in sentence:
-            word_id = word
-            word = self.reverse_dictionary[word]
+
+        for word_id in sentence:
+
+            word = self.reverse_dictionary[word_id]
+
+            if self.counter[word] < 5:
+                #print('  [skip] {} ({})'.format(word, self.counter[word]))
+                continue
+
             a = math.sqrt(self.counter[word] / (.001 * self.total_words)) + 1
             b = (.001 * self.total_words)
-            #print(word, self.counter[word])
             r = a * b / self.counter[word]
-            #print(word, s, r)
-            if np.random.sample() < r:
-                cleaned.append(word_id)
-            #if np.random.sample() > s:
-            #print('include', word)
-            #encoded.append(dictionary[word])
-        for i in range(len(cleaned)):
-            #print(self.counter)
 
-            window = np.random.randint(low=1, high=self.window+1)
+            r = 1 - math.sqrt(0.001 / self.counter[word])
+            p = self.counter[word] / self.total_words
+            r = (math.sqrt(p / .001) + 1) * (.001 / p)
+            #print()
+
+            if np.random.sample() > r:
+                #print('  [sampled out] {} ({})'.format(word, r))
+                continue
+
+            cleaned.append(word_id)
+
+        sentence = cleaned
+
+        for i, word_id in enumerate(sentence):
+
+            window = np.random.randint(low=1, high=self.window + 1)
             start = max(i - window, 0)
-            #start = i
-            end = min(i + window, len(cleaned) - 1)
+            #start = max(i, 0)
+            end = min(i + window, len(sentence) - 1)
 
             for j in range(start, end + 1):
-                if j != i:
+                if j == i:
+                    continue
 
-                    ngrams.append((cleaned[i], cleaned[j]))
+                pair_id = sentence[j]
+
+                #if np.random.sample() > r:
+                    #print('  [sampled out] {} -> {} ({})'.format(word, pair, r))
+                #    continue
+
+                ngrams.append((word_id, pair_id))
 
         return ngrams
+
+        # ngrams = []
+        # cleaned = []
+        # for word in sentence:
+        #     word_id = word
+        #     word = self.reverse_dictionary[word]
+        #     a = math.sqrt(self.counter[word] / (.001 * self.total_words)) + 1
+        #     b = (.001 * self.total_words)
+        #     #print(word, self.counter[word])
+        #     r = a * b / self.counter[word]
+        #     #print(word, s, r)
+        #     if np.random.sample() < r:
+        #         cleaned.append(word_id)
+        #     #if np.random.sample() > s:
+        #     #print('include', word)
+        #     #encoded.append(dictionary[word])
+        # for i in range(len(cleaned)):
+        #     #print(self.counter)
+
+        #     window = np.random.randint(low=1, high=self.window+1)
+        #     start = max(i - window, 0)
+        #     #start = i
+        #     end = min(i + window, len(cleaned) - 1)
+
+        #     for j in range(start, end + 1):
+        #         if j != i:
+
+        #             ngrams.append((cleaned[i], cleaned[j]))
+
+        # return ngrams
 
     def batch(self, size):
 
@@ -82,28 +132,33 @@ class NGramScanner(object):
 
         return batch, labels
 
+
 import math
+
+
 class Word2Vec(object):
 
-    def __init__(self, n_words, n_embeddings=256, n_batch=256, n_sampled=10):
+    def __init__(self, n_words, n_embeddings=256, n_batch=256, n_sampled=5):
 
         self.train_examples = tf.placeholder(tf.int32, shape=[n_batch], name='inputs')
         self.train_labels = tf.placeholder(tf.int32, shape=[n_batch, 1], name='labels')
-        #v = 1.0 / math.sqrt(n_words)
-        v = 1.0 / math.sqrt(n_embeddings)
+        v = 1.0 / math.sqrt(n_words)
+        #v = 1.0 / math.sqrt(n_embeddings)
+        #v = 1.0 / n_embeddings
         #print(v, math.sqrt(n_embeddings))
         #v = 1.0
 
-        embeddings = tf.Variable(tf.random_normal([n_words, n_embeddings], -v, v), name='embeddings')
+        embeddings = tf.Variable(tf.random_uniform([n_words, n_embeddings], -v, v), name='embeddings')
+        #embeddings = tf.Variable(tf.zeros([n_words, n_embeddings]), name='embeddings')
         train_embeddings = tf.nn.embedding_lookup(embeddings, self.train_examples)
 
         #nce_weights = tf.Variable(tf.truncated_normal([n_words, n_embeddings],
         #stddev=1.0 / math.sqrt(n_embeddings)), name='nce_weights')
-        nce_weights = tf.Variable(tf.truncated_normal([n_words, n_embeddings]), name='nce_weights')
-        #nce_weights = tf.Variable(tf.zeros([n_words, n_embeddings]), name='nce_weights')
+        #nce_weights = tf.Variable(tf.random_uniform([n_words, n_embeddings], -v, v), name='nce_weights')
+        nce_weights = tf.Variable(tf.random_uniform([n_words, n_embeddings], -v, v), name='nce_weights')
 
         #nce_biases = tf.Variable(tf.random_normal([n_words], -v, v), name='nce_biases')
-        nce_biases = tf.Variable(tf.random_normal([n_words]), name='nce_biases')
+        nce_biases = tf.Variable(tf.zeros([n_words]), name='nce_biases')
 
         self.loss = tf.reduce_mean(
             tf.nn.nce_loss(
@@ -129,8 +184,8 @@ class Word2Vec(object):
 
 def train():
 
-    n_batch = 400
-    n_embeddings = 200
+    n_batch = 200
+    n_embeddings = 100
     n_steps = 100001
     window = 5
 
@@ -164,6 +219,7 @@ def train():
                 print('average loss at step {}: {}'.format(step, average_loss / 2000))
                 saver.save(session, os.path.join(LOG_PATH, 'model'), step)
                 average_loss = 0
+                print(scanner.index)
 
             if step % 10000 == 0:
                 similarity = word2vec.similarity.eval()
@@ -199,8 +255,7 @@ def train():
                 outfile.write(' '.join(sentence) + '\n')
 
         import word2vec as w2v
-        w2v.word2vec(
-            'data/temp/sentences.txt', 'data/temp/word2vec.bin', size=200, verbose=True)
+        w2v.word2vec('data/temp/sentences.txt', 'data/temp/word2vec.bin', size=100, verbose=True)
 
 
 def evaluate():
@@ -215,15 +270,12 @@ def evaluate():
 
     n_words = len(dictionary)
     #word2vec = Word2Vec(n_words)
-    word2vec = Word2Vec(n_words, n_embeddings=200, n_batch=200)
+    word2vec = Word2Vec(n_words, n_embeddings=100, n_batch=200)
     saver = tf.train.Saver()
 
     with tf.Session() as session:
 
-
-
         print(n_words)
-
 
         saver.restore(session, os.path.join(LOG_PATH, 'model'))
 
@@ -235,7 +287,6 @@ def evaluate():
                 nearest = (-similarity[dictionary[word], :]).argsort()[1:9]
                 decoded = [reverse_dictionary[j] for j in nearest]
                 print('  {} -> {}'.format(word, decoded))
-
 
         plot_only = 1000
         labels = [reverse_dictionary[i] for i in range(plot_only)]
@@ -271,7 +322,6 @@ def evaluate():
     #print(selected, len(selected))
     points = tsne.fit_transform(selected)
     util.plot_points(points, top, filename='tsne.png')
-
 
 
 if __name__ == '__main__':
