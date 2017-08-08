@@ -22,7 +22,7 @@ CHECK_WORDS = [
 
 class NGramScanner(object):
 
-    def __init__(self, sentences, counter, total_words, reverse_dictionary, window=5):
+    def __init__(self, sentences, window=5):
         #self.sentences = sentences
         self.window = window
         self.ngrams = []
@@ -196,8 +196,13 @@ def train():
         stopwords = file.read().strip().split('\n')
 
     sentences = util.read_data(INPUT_PATH)
-    encoded, counter, total_words, dictionary, reverse_dictionary = util.encode_data(sentences, ignore=stopwords)
-    scanner = NGramScanner(encoded, counter, total_words, reverse_dictionary, window=window)
+    #encoded, counter, total_words, dictionary, reverse_dictionary = util.encode_data(sentences, ignore=stopwords)
+    #scanner = NGramScanner(encoded, counter, total_words, reverse_dictionary, window=window)
+    scanner = NGramScanner(sentences, window=window)
+    dictionary = scanner.dictionary
+    reverse_dictionary = scanner.reverse_dictionary
+    total_words = scanner.total_words
+    counter = scanner.counter
     n_words = len(dictionary)
 
     print('# words:', n_words)
