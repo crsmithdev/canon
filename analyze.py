@@ -13,8 +13,8 @@ INPUT_PATH = 'data/processed/*.txt'
 LOG_PATH = 'data/temp'
 STOPWORDS_PATH = 'data/source/stopwords/stopwords.txt'
 CHECK_WORDS = [
-    'mind', 'body', 'dhamma', 'buddha', 'sangha', 'tathagata', 'gotama', 'right', 'wrong', 'view', 'resolve', 'speech',
-    'action', 'livelihood', 'effort', 'mindfulness', 'practice', 'cessation', 'origination', 'birth', 'death',
+    'mind', 'body', 'dhamma', 'buddha', 'sangha', 'tathagata', 'gotama', 'ananda', 'right', 'wrong', 'view', 'resolve',
+    'speech', 'action', 'livelihood', 'effort', 'mindfulness', 'practice', 'cessation', 'origination', 'birth', 'death',
     'pleasure', 'pain', 'good', 'bad', 'mind', 'body', 'north', 'south', 'skin', 'flesh', 'eye', 'ear', 'king', 'sword',
     'contact', 'form', 'sensation', 'feeling', 'perception', 'feeling', 'formation', 'consciousness'
 ]
@@ -23,22 +23,23 @@ CHECK_WORDS = [
 class NGramScanner(object):
 
     def __init__(self, sentences, counter, total_words, reverse_dictionary, window=5):
-        self.sentences = sentences
+        #self.sentences = sentences
         self.window = window
         self.ngrams = []
-        self.counter = counter
-        self.total_words = total_words
-        self.reverse_dictionary = reverse_dictionary
-        self.dictionary = dict(zip(reverse_dictionary.values(), reverse_dictionary.keys()))
+        #self.counter = counter
+        #self.total_words = total_words
+        #self.reverse_dictionary = reverse_dictionary
+        #self.dictionary = dict(zip(reverse_dictionary.values(), reverse_dictionary.keys()))
         self.index = 0
 
-        orig = []
-        for s in sentences:
-            orig.append([self.reverse_dictionary[w] for w in s])
+        #orig = []
+        #for s in sentences:
+        #    orig.append([self.reverse_dictionary[w] for w in s])
 
         counter = collections.Counter()
         total_words = 0
 
+        orig = sentences
         for sentence in orig:
             counter.update(sentence)
             total_words += len(sentence)
@@ -48,9 +49,13 @@ class NGramScanner(object):
 
         encoded = []
         for s in orig:
-            encoded.append([self.dictionary[w] for w in s])
+            encoded.append([dictionary[w] for w in s])
 
-
+        self.dictionary = dictionary
+        self.reverse_dictionary = reverse_dictionary
+        self.total_words = total_words
+        self.counter = counter
+        self.sentences = encoded
 
     def _extract(self, sentence):
 
@@ -93,7 +98,6 @@ class NGramScanner(object):
 
         return ngrams
 
-
     def batch(self, size):
 
         batch = []
@@ -120,18 +124,19 @@ import math
 
 class Word2Vec(object):
 
-    def __init__(self, n_words, n_embeddings=256, n_batch=256, n_sampled=10):
+    def __init__(self, n_words, n_embeddings=256, n_batch=256, n_sampled=5):
 
         self.train_examples = tf.placeholder(tf.int64, shape=[n_batch], name='inputs')
         self.train_labels = tf.placeholder(tf.int64, shape=[n_batch, 1], name='labels')
-        v = 2.0 / (n_words + n_embeddings)
+        v = 1.0 / (n_embeddings)
         #v = 1.0
 
         embeddings = tf.Variable(tf.random_uniform([n_words, n_embeddings], -v, v), name='embeddings')
         train_embeddings = tf.nn.embedding_lookup(embeddings, self.train_examples)
 
-        nce_weights = tf.Variable(tf.truncated_normal([n_words, n_embeddings],
-            stddev=1.0 / math.sqrt(n_embeddings)), name='nce_weights')
+        #nce_weights = tf.Variable(tf.truncated_normal([n_words, n_embeddings],
+        #    stddev=1.0 / math.sqrt(n_embeddings)), name='nce_weights')
+        nce_weights = tf.Variable(tf.random_uniform([n_words, n_embeddings], -v, v))
         nce_biases = tf.Variable(tf.zeros([n_words]), name='nce_biases')
 
         sampled, true_expected, sampled_expected = tf.nn.uniform_candidate_sampler(
@@ -140,20 +145,33 @@ class Word2Vec(object):
             num_sampled=n_sampled,
             unique=True,
             range_max=n_words,
-            name='sampler'
-        )
+            name='sampler')
 
-        self.loss = tf.reduce_mean(tf.nn.sampled_softmax_loss(
-            weights=nce_weights,
-            biases=nce_biases,
-            labels=self.train_labels,
-            inputs=train_embeddings,
-            num_sampled=n_sampled,
-            num_classes=n_words,
-            sampled_values=(sampled, true_expected, sampled_expected)
-        ))
+        # self.loss = tf.reduce_mean(
+        #     tf.nn.nce_loss(
+        #         weights=nce_weights,
+        #         biases=nce_biases,
+        #         labels=self.train_labels,
+        #         inputs=train_embeddings,
+        #         num_sampled=n_sampled,
+        #         remove_accidental_hits=True,
+        #         sampled_values=(sampled, true_expected, sampled_expected),
+        #         num_classes=n_words))
+
+        self.loss = tf.reduce_mean(
+            tf.nn.sampled_softmax_loss(
+                weights=nce_weights,
+                biases=nce_biases,
+                labels=self.train_labels,
+                inputs=train_embeddings,
+                num_sampled=n_sampled,
+                num_classes=n_words,
+                sampled_values=(sampled, true_expected, sampled_expected)))
+
+        reg = tf.reduce_sum(tf.abs(nce_weights))
 
         self.optimizer = tf.train.GradientDescentOptimizer(1.0).minimize(self.loss)
+        #self.optimizer = tf.train.AdagradOptimizer(1.0).minimize(self.loss)
         #self.optimizer = tf.train.AdamOptimizer().minimize(self.loss)
 
         self.embeddings = tf.nn.l2_normalize(embeddings, 1, name='normalized_embeddings')
