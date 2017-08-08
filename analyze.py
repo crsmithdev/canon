@@ -7,6 +7,7 @@ import tensorflow as tf
 import sklearn as sk
 from sklearn.manifold import TSNE
 from tensorflow.contrib.tensorboard.plugins import projector
+import collections
 
 INPUT_PATH = 'data/processed/*.txt'
 LOG_PATH = 'data/temp'
@@ -35,8 +36,18 @@ class NGramScanner(object):
         for s in sentences:
             orig.append([self.reverse_dictionary[w] for w in s])
 
+        counter = collections.Counter()
+        total_words = 0
+
+        for sentence in orig:
+            counter.update(sentence)
+            total_words += len(sentence)
+
+        dictionary = {c[0]: i for i, c in enumerate(counter.most_common())}
+        reverse_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
+
         encoded = []
-        for s in sentences:
+        for s in orig:
             encoded.append([self.dictionary[w] for w in s])
 
 
@@ -54,16 +65,8 @@ class NGramScanner(object):
                 #print('  [skip] {} ({})'.format(word, self.counter[word]))
                 continue
 
-            #p = self.counter[word] / self.total_words
-            #r = math.sqrt(p / .001) * (.001 / p)
-            #a = math.sqrt(self.counter[word] / (.001 * self.total_words)) + 1
-            #b = (.001 * self.total_words)
-            #r = a * b / self.counter[word]
-
-            #r = 1 - math.sqrt(0.001 / self.counter[word])
             p = self.counter[word] / self.total_words
             r = (math.sqrt(p / .001) + 1) * (.001 / p)
-            #print()
 
             if np.random.sample() > r:
                 #print('  [sampled out] {} ({})'.format(word, r))
@@ -86,43 +89,10 @@ class NGramScanner(object):
 
                 pair_id = sentence[j]
 
-                #if np.random.sample() > r:
-                #print('  [sampled out] {} -> {} ({})'.format(word, pair, r))
-                #    continue
-
                 ngrams.append((word_id, pair_id))
 
         return ngrams
 
-        # ngrams = []
-        # cleaned = []
-        # for word in sentence:
-        #     word_id = word
-        #     word = self.reverse_dictionary[word]
-        #     a = math.sqrt(self.counter[word] / (.001 * self.total_words)) + 1
-        #     b = (.001 * self.total_words)
-        #     #print(word, self.counter[word])
-        #     r = a * b / self.counter[word]
-        #     #print(word, s, r)
-        #     if np.random.sample() < r:
-        #         cleaned.append(word_id)
-        #     #if np.random.sample() > s:
-        #     #print('include', word)
-        #     #encoded.append(dictionary[word])
-        # for i in range(len(cleaned)):
-        #     #print(self.counter)
-
-        #     window = np.random.randint(low=1, high=self.window+1)
-        #     start = max(i - window, 0)
-        #     #start = i
-        #     end = min(i + window, len(cleaned) - 1)
-
-        #     for j in range(start, end + 1):
-        #         if j != i:
-
-        #             ngrams.append((cleaned[i], cleaned[j]))
-
-        # return ngrams
 
     def batch(self, size):
 
@@ -150,36 +120,28 @@ import math
 
 class Word2Vec(object):
 
-    def __init__(self, n_words, n_embeddings=256, n_batch=256, n_sampled=5):
+    def __init__(self, n_words, n_embeddings=256, n_batch=256, n_sampled=10):
 
-        self.train_examples = tf.placeholder(tf.int32, shape=[n_batch], name='inputs')
-        self.train_labels = tf.placeholder(tf.int32, shape=[n_batch, 1], name='labels')
+        self.train_examples = tf.placeholder(tf.int64, shape=[n_batch], name='inputs')
+        self.train_labels = tf.placeholder(tf.int64, shape=[n_batch, 1], name='labels')
         v = 2.0 / (n_words + n_embeddings)
-        #v = 1.0 / math.sqrt(n_embeddings)
-        #v = 1.0 / n_embeddings
-        #print(v, math.sqrt(n_embeddings))
         #v = 1.0
 
         embeddings = tf.Variable(tf.random_uniform([n_words, n_embeddings], -v, v), name='embeddings')
-        #embeddings = tf.Variable(tf.zeros([n_words, n_embeddings]), name='embeddings')
         train_embeddings = tf.nn.embedding_lookup(embeddings, self.train_examples)
 
-        #nce_weights = tf.Variable(tf.truncated_normal([n_words, n_embeddings],
-        #stddev=1.0 / math.sqrt(n_embeddings)), name='nce_weights')
-        #nce_weights = tf.Variable(tf.random_uniform([n_words, n_embeddings], -v, v), name='nce_weights')
-        nce_weights = tf.Variable(tf.random_uniform([n_words, n_embeddings], -v, v), name='nce_weights')
-
-        #nce_biases = tf.Variable(tf.random_normal([n_words], -v, v), name='nce_biases')
+        nce_weights = tf.Variable(tf.truncated_normal([n_words, n_embeddings],
+            stddev=1.0 / math.sqrt(n_embeddings)), name='nce_weights')
         nce_biases = tf.Variable(tf.zeros([n_words]), name='nce_biases')
 
-        # self.loss = tf.reduce_mean(
-        #     tf.nn.nce_loss(
-        #         weights=nce_weights,
-        #         biases=nce_biases,
-        #         labels=self.train_labels,
-        #         inputs=train_embeddings,
-        #         num_sampled=n_sampled,
-        #         num_classes=n_words))
+        sampled, true_expected, sampled_expected = tf.nn.uniform_candidate_sampler(
+            true_classes=self.train_labels,
+            num_true=1,
+            num_sampled=n_sampled,
+            unique=True,
+            range_max=n_words,
+            name='sampler'
+        )
 
         self.loss = tf.reduce_mean(tf.nn.sampled_softmax_loss(
             weights=nce_weights,
@@ -187,9 +149,11 @@ class Word2Vec(object):
             labels=self.train_labels,
             inputs=train_embeddings,
             num_sampled=n_sampled,
-            num_classes=n_words))
+            num_classes=n_words,
+            sampled_values=(sampled, true_expected, sampled_expected)
+        ))
 
-        self.optimizer = tf.train.GradientDescentOptimizer(0.1).minimize(self.loss)
+        self.optimizer = tf.train.GradientDescentOptimizer(1.0).minimize(self.loss)
         #self.optimizer = tf.train.AdamOptimizer().minimize(self.loss)
 
         self.embeddings = tf.nn.l2_normalize(embeddings, 1, name='normalized_embeddings')
