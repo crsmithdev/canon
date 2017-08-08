@@ -31,6 +31,16 @@ class NGramScanner(object):
         self.dictionary = dict(zip(reverse_dictionary.values(), reverse_dictionary.keys()))
         self.index = 0
 
+        orig = []
+        for s in sentences:
+            orig.append([self.reverse_dictionary[w] for w in s])
+
+        encoded = []
+        for s in sentences:
+            encoded.append([self.dictionary[w] for w in s])
+
+
+
     def _extract(self, sentence):
 
         ngrams = []
@@ -44,11 +54,13 @@ class NGramScanner(object):
                 #print('  [skip] {} ({})'.format(word, self.counter[word]))
                 continue
 
-            a = math.sqrt(self.counter[word] / (.001 * self.total_words)) + 1
-            b = (.001 * self.total_words)
-            r = a * b / self.counter[word]
+            #p = self.counter[word] / self.total_words
+            #r = math.sqrt(p / .001) * (.001 / p)
+            #a = math.sqrt(self.counter[word] / (.001 * self.total_words)) + 1
+            #b = (.001 * self.total_words)
+            #r = a * b / self.counter[word]
 
-            r = 1 - math.sqrt(0.001 / self.counter[word])
+            #r = 1 - math.sqrt(0.001 / self.counter[word])
             p = self.counter[word] / self.total_words
             r = (math.sqrt(p / .001) + 1) * (.001 / p)
             #print()
@@ -75,7 +87,7 @@ class NGramScanner(object):
                 pair_id = sentence[j]
 
                 #if np.random.sample() > r:
-                    #print('  [sampled out] {} -> {} ({})'.format(word, pair, r))
+                #print('  [sampled out] {} -> {} ({})'.format(word, pair, r))
                 #    continue
 
                 ngrams.append((word_id, pair_id))
@@ -142,7 +154,7 @@ class Word2Vec(object):
 
         self.train_examples = tf.placeholder(tf.int32, shape=[n_batch], name='inputs')
         self.train_labels = tf.placeholder(tf.int32, shape=[n_batch, 1], name='labels')
-        v = 1.0 / math.sqrt(n_words)
+        v = 2.0 / (n_words + n_embeddings)
         #v = 1.0 / math.sqrt(n_embeddings)
         #v = 1.0 / n_embeddings
         #print(v, math.sqrt(n_embeddings))
@@ -160,16 +172,25 @@ class Word2Vec(object):
         #nce_biases = tf.Variable(tf.random_normal([n_words], -v, v), name='nce_biases')
         nce_biases = tf.Variable(tf.zeros([n_words]), name='nce_biases')
 
-        self.loss = tf.reduce_mean(
-            tf.nn.nce_loss(
-                weights=nce_weights,
-                biases=nce_biases,
-                labels=self.train_labels,
-                inputs=train_embeddings,
-                num_sampled=n_sampled,
-                num_classes=n_words))
+        # self.loss = tf.reduce_mean(
+        #     tf.nn.nce_loss(
+        #         weights=nce_weights,
+        #         biases=nce_biases,
+        #         labels=self.train_labels,
+        #         inputs=train_embeddings,
+        #         num_sampled=n_sampled,
+        #         num_classes=n_words))
 
-        self.optimizer = tf.train.GradientDescentOptimizer(1.0).minimize(self.loss)
+        self.loss = tf.reduce_mean(tf.nn.sampled_softmax_loss(
+            weights=nce_weights,
+            biases=nce_biases,
+            labels=self.train_labels,
+            inputs=train_embeddings,
+            num_sampled=n_sampled,
+            num_classes=n_words))
+
+        self.optimizer = tf.train.GradientDescentOptimizer(0.1).minimize(self.loss)
+        #self.optimizer = tf.train.AdamOptimizer().minimize(self.loss)
 
         self.embeddings = tf.nn.l2_normalize(embeddings, 1, name='normalized_embeddings')
         self.similarity = tf.matmul(self.embeddings, self.embeddings, transpose_b=True)
@@ -222,6 +243,7 @@ def train():
                 print(scanner.index)
 
             if step % 10000 == 0:
+                print(word2vec.similarity)
                 similarity = word2vec.similarity.eval()
 
                 for word in CHECK_WORDS:
