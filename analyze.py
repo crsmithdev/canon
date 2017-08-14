@@ -4,7 +4,6 @@ from sklearn.manifold import TSNE
 import model
 import skipgram
 from matplotlib import pyplot as plt
-import word2vec
 
 INPUT_PATH = 'data/sentences.txt'
 LOG_PATH = 'data/model'
@@ -114,9 +113,6 @@ def train():
 
         writer.close()
 
-        outpath = os.path.join(LOG_PATH, 'word2vec.bin')
-        word2vec.word2vec('data/sentences.txt', outpath, size=EMBEDDING_SIZE)
-
 
 def evaluate():
     """Evaluates the model."""
@@ -141,7 +137,6 @@ def evaluate():
         saver.restore(session, os.path.join(LOG_PATH, 'model'))
 
         check_ids = [dictionary[w] for w in CHECK_WORDS if w in dictionary]
-        print('model >>>>>>>>>>>>>>>>>>>>>>>>>')
         for n in word_vectors.nearest(session, check_ids):
             print('{} -> {}'.format(reverse_dictionary[n[0]], ', '.join(
                 [reverse_dictionary[i] for i in n[1:]])))
@@ -150,16 +145,6 @@ def evaluate():
         labels = [reverse_dictionary[i] for i in range(N_PLOT)]
         points = tsne.fit_transform(word_vectors.embeddings(session)[:N_PLOT, :])
         plot_points(points, labels, filename='tsne.png')
-
-    w2v = word2vec.load('data/model/word2vec.bin')
-
-    print('word2vec >>>>>>>>>>>>>>>>>>>>>>>>>')
-    for word in CHECK_WORDS:
-        if word in w2v.vocab:
-            indexes, metrics = w2v.cosine(word)
-            nearest = [c[0] for c in w2v.generate_response(indexes, metrics)]
-            print('{} -> {}'.format(word, nearest))
-
 
 if __name__ == '__main__':
 

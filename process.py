@@ -1,12 +1,12 @@
 import glob
 import re
 import os
-from bs4 import BeautifulSoup, Comment
-import nltk
-from nltk.corpus import wordnet
-import requests
 import zipfile
 import io
+import nltk
+import requests
+from bs4 import BeautifulSoup, Comment
+from nltk.corpus import wordnet
 
 FILE_PATHS = [
     'data/ati/ati_website/html/tipitaka/mn/mn.*.html',
@@ -23,7 +23,7 @@ META_KEYS = [
 ZIPFILE_NAME = 'ati-legacy-2015.12.20.21.zip'
 ZIPFILE_URL = 'http://www.accesstoinsight.org/tech/download/bulk/ati-legacy-2015.12.20.21.zip'
 
-OUTPUT_PATH = 'data'
+DATA_PATH = 'data'
 
 RE_META_BLOCK = re.compile(
     r'Begin ATIDoc metadata dump:(.*)End ATIDoc metadata dump.*', flags=re.DOTALL)
@@ -47,6 +47,9 @@ def convert_tag(tag):
 
 
 def parse_files():
+
+    if not os.path.exists(DATA_PATH):
+        os.makedirs(DATA_PATH)
 
     sentences = []
 
@@ -177,13 +180,13 @@ def parse_meta(soup):
 
 def maybe_download():
 
-    if not os.path.exists(os.path.join(OUTPUT_PATH, 'ati')):
+    if not os.path.exists(os.path.join(DATA_PATH, 'ati')):
         print('downloading {}...'.format(ZIPFILE_URL))
         response = requests.get(ZIPFILE_URL)
 
         with zipfile.ZipFile(io.BytesIO(response.content)) as z:
             print('extracting files...')
-            z.extractall(os.path.join(OUTPUT_PATH, 'ati'))
+            z.extractall(os.path.join(DATA_PATH, 'ati'))
 
 
 if __name__ == '__main__':
