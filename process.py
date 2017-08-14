@@ -84,11 +84,10 @@ def process_text(text):
             words = [w.lower() for w in words if len(w) > 0]
 
             # pos tag + wordnet lemmatize
-            tagged = nltk.pos_tag(words)
-            tagged = [(t[0], convert_tag(t[1])) for t in tagged]
+            tagged = [(t[0], convert_tag(t[1])) for t in nltk.pos_tag(words)]
             words = [lemmatizer.lemmatize(t[0], pos=t[1]) for t in tagged]
 
-            # remove remaining punctuation & extraneous characters
+            # remove any remaining artifacts
             words = [w for w in words if len(w) > 1 or w in {'a', 'i', 'o'}]
             words = [w for w in words if re.match(r'^[a-z/-]+$', w)]
 

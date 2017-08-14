@@ -71,19 +71,6 @@ class WordVectors(object):
         self._distance = tf.matmul(
             target_embedding, self._normalized_embeddings, transpose_b=True)
 
-        self.eval_a = tf.placeholder(tf.int64)
-        self.eval_b = tf.placeholder(tf.int64)
-        self.eval_c = tf.placeholder(tf.int64)
-
-        a_emb = tf.gather(self._normalized_embeddings, self.eval_a)
-        b_emb = tf.gather(self._normalized_embeddings, self.eval_b)
-        c_emb = tf.gather(self._normalized_embeddings, self.eval_c)
-
-        target = c_emb + (b_emb - a_emb)
-        self.dist2 = tf.matmul(target, self._normalized_embeddings, transpose_b=True)
-
-
-
     def train(self, session, examples, labels):
         """Trains the model on a set of examples and labels."""
 
@@ -99,17 +86,6 @@ class WordVectors(object):
 
         _, indices = session.run(
             tf.nn.top_k(self._distance, n + 1), feed_dict={self._nearest_to: inputs})
-
-        return indices
-
-    def analogy(self, session, a, b, c, n=4):
-
-        _, indices = session.run(
-            tf.nn.top_k(self.dist2, n + 1), feed_dict={
-                self.eval_a: [a],
-                self.eval_b: [b],
-                self.eval_c: [c],
-            })
 
         return indices
 

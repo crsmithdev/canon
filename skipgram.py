@@ -32,7 +32,7 @@ class SkipGramScanner(object):
 
         encoded = []
 
-        # encode word -> id, omit words < threshold
+        # encode word -> id, build vocabulary
         for sentence in sentences:
             selected = [w for w in sentence if w in self.counter]
             encoded.append([self.dictionary[w] for w in selected])
